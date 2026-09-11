@@ -26,6 +26,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repo (needed for gh release upload)
+        uses: actions/checkout@v4
+
       - name: Download ciphertext from Filebase
         run: |
           aws s3 cp "s3://${FILEBASE_BUCKET}/${OBJECT_KEY}" "./${OBJECT_KEY}" \
@@ -41,6 +44,7 @@ jobs:
         run: gh release upload "${RELEASE_TAG}" "./${OBJECT_KEY}" --clobber
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           OBJECT_KEY: ${{ inputs.object_key }}
           RELEASE_TAG: ${{ inputs.release_tag }}
 
