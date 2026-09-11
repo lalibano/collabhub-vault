@@ -1,0 +1,57 @@
+# CollabHub mover — runs in the VAULT repo (public, stores ciphertext only).
+# Triggered by the Worker after a browser uploads ciphertext to Filebase.
+# Downloads from Filebase -> uploads to the release (authenticated) -> deletes the staged object.
+name: transfer
+
+on:
+  workflow_dispatch:
+    inputs:
+      object_key:
+        description: "Filebase object key (uuid.bin)"
+        required: true
+        type: string
+      file_name:
+        description: "Original filename (unused on the asset; metadata lives in Supabase)"
+        required: false
+        type: string
+        default: "file.bin"
+      release_tag:
+        description: "Release tag to attach the asset to"
+        required: true
+        type: string
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download ciphertext from Filebase
+        run: |
+          aws s3 cp "s3://${FILEBASE_BUCKET}/${OBJECT_KEY}" "./${OBJECT_KEY}" \
+            --endpoint-url https://s3.filebase.io --region us-east-1
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.FILEBASE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.FILEBASE_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          FILEBASE_BUCKET: ${{ secrets.FILEBASE_BUCKET }}
+          OBJECT_KEY: ${{ inputs.object_key }}
+
+      - name: Upload to release
+        run: gh release upload "${RELEASE_TAG}" "./${OBJECT_KEY}" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OBJECT_KEY: ${{ inputs.object_key }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+
+      - name: Delete staged object from Filebase
+        if: always()
+        run: |
+          aws s3 rm "s3://${FILEBASE_BUCKET}/${OBJECT_KEY}" \
+            --endpoint-url https://s3.filebase.io --region us-east-1 || true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.FILEBASE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.FILEBASE_SECRET }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          FILEBASE_BUCKET: ${{ secrets.FILEBASE_BUCKET }}
+          OBJECT_KEY: ${{ inputs.object_key }}
